@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Stock Prediction Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            background: linear-gradient(to right, #141e30, #243b55);
+            color: white;
+            text-align: center;
+        }
+
+        /* 🔹 Top Navigation Bar */
+        .navbar {
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+
+        .navbar a:hover {
+            color: #00ffcc;
+        }
+
+        h1 { margin-top: 40px; }
+
+        input {
+            padding: 12px;
+            width: 250px;
+            border-radius: 8px;
+            border: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: none;
+            background-color: #00c6ff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .card {
+            margin-top: 30px;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            width: 350px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 15px;
+        }
+
+        img {
+            width: 80px;
+            margin-bottom: 10px;
+        }
+
+        .graph-container {
+            width: 85%;
+            margin: 40px auto;
+        }
+
+        .news-section {
+            width: 80%;
+            margin: 40px auto;
+            text-align: left;
+        }
+
+        .news-item {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        a {
+            color: #00ffcc;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        small { color: gray; }
+    </style>
+</head>
+<body>
+
+    <!-- 🔹 Top Dashboard -->
+    <div class="navbar">
+        <a href="/">Home</a>
+        <a href="/predict">Predict</a>
+        <a href="/contact">Contact Us</a>
+    </div>
+
+    <h1>📈 AI Stock Prediction System</h1>
+
+    <form method="POST">
+        <input type="text" name="stock" placeholder="Enter Stock (AAPL, TCS.NS)" required>
+        <button type="submit">Predict</button>
+    </form>
+
+    {% if prediction %}
+        <div class="card">
+            {% if logo_url %}
+                <img src="{{ logo_url }}">
+            {% endif %}
+
+            <h2>{{ stock_input }}</h2>
+            <p>Today's Price: ₹ {{ today_price }}</p>
+            <p>Predicted Next Day Price: ₹ {{ prediction }}</p>
+        </div>
+    {% endif %}
+
+    {% if graph_html %}
+        <div class="graph-container">
+            {{ graph_html|safe }}
+        </div>
+    {% endif %}
+
+    {% if news_list %}
+        <div class="news-section">
+            <h2>📰 Latest News</h2>
+            {% for news in news_list %}
+                <div class="news-item">
+                    <a href="{{ news.link }}" target="_blank">
+                        {{ news.title }}
+                    </a>
+                    <br>
+                    <small>{{ news.published }}</small>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+</body>
+</html>

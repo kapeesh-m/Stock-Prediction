@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero">
+    <h1>AI-Powered Stock Prediction System</h1>
+    <p>Predict next-day stock prices using BiLSTM Deep Learning Model</p>
+    <a href="/predict" class="btn-primary big-btn">Go to Dashboard</a>
+</div>
+
+<div class="features">
+    <div class="card">
+        <h3>📊 Real-Time Data</h3>
+        <p>Live stock price using Yahoo Finance API</p>
+    </div>
+    <div class="card">
+        <h3>🤖 Deep Learning</h3>
+        <p>BiLSTM Neural Network Model</p>
+    </div>
+    <div class="card">
+        <h3>📰 Financial News</h3>
+        <p>Latest stock-related headlines</p>
+    </div>
+</div>
+{% endblock %}

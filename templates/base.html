@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Intelligent Stock Prediction</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<nav class="navbar">
+    <div class="logo">📈 StockAI</div>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/predict">Dashboard</a>
+        <a href="/contact">Contact</a>
+        <a href="/login" class="btn-outline">Login</a>
+        <a href="/signup" class="btn-primary">Signup</a>
+    </div>
+</nav>
+
+<div class="main-container">
+    {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>

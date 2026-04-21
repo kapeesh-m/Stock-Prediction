@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stock Market Prediction</title>
+</head>
+<body>
+
+<h1>📈 Stock Price Prediction (Pretrained Model)</h1>
+
+<form method="POST">
+    <p>Enter last 60 closing prices (comma separated)</p>
+    <textarea name="prices" rows="4" cols="60" required></textarea><br><br>
+    <button type="submit">Predict</button>
+</form>
+
+{% if prediction %}
+    <h2>Predicted Next Price: ₹ {{ prediction | round(2) }}</h2>
+{% endif %}
+
+</body>
+</html>
