@@ -11,7 +11,7 @@ import os
 import re
 from datetime import timedelta
 
-# ✅ ML IMPORTS
+# ML
 import numpy as np
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
@@ -35,7 +35,7 @@ if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# -------------------- LOAD ML MODEL --------------------
+# -------------------- LOAD MODEL --------------------
 model = load_model("best_bilstm_model.h5")
 scaler = MinMaxScaler(feature_range=(0, 1))
 
@@ -49,11 +49,12 @@ class User(db.Model):
 with app.app_context():
     db.create_all()
 
-# -------------------- ROUTES --------------------
+# -------------------- HOME --------------------
 @app.route("/")
 def home():
     return render_template("home.html")
 
+# -------------------- CONTACT --------------------
 @app.route("/contact")
 def contact():
     return render_template("contact.html")
@@ -62,15 +63,15 @@ def contact():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        email = request.form["email"].strip().lower()
-        password_raw = request.form["password"]
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
 
-        if not username or not email or not password_raw:
+        if not username or not email or not password:
             flash("All fields are required.", "danger")
             return redirect(url_for("signup"))
 
-        if len(password_raw) < 8:
+        if len(password) < 8:
             flash("Password must be at least 8 characters.", "danger")
             return redirect(url_for("signup"))
 
@@ -79,45 +80,42 @@ def signup():
         ).first()
 
         if existing_user:
-            flash("Username or Email already exists!", "danger")
+            flash("User already exists!", "danger")
             return redirect(url_for("signup"))
 
-        hashed_password = generate_password_hash(password_raw)
+        hashed_password = generate_password_hash(password)
 
         new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
 
-        flash("Account created successfully!", "success")
+        flash("Signup successful! Please login.", "success")
         return redirect(url_for("login"))
 
     return render_template("signup.html")
 
 # -------------------- LOGIN --------------------
-login_attempts = {}
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
 
-        ip = request.remote_addr
-        attempts = login_attempts.get(ip, 0)
-
-        if attempts >= 5:
-            flash("Too many attempts. Try later.", "danger")
-            return render_template("login.html")
+        if not username or not password:
+            flash("Enter username and password.", "danger")
+            return redirect(url_for("login"))
 
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
-            login_attempts.pop(ip, None)
+            session.clear()
+            session.permanent = True
             session["user_id"] = user.id
             session["username"] = user.username
+
+            flash("Login successful!", "success")
             return redirect(url_for("predict"))
         else:
-            login_attempts[ip] = attempts + 1
             flash("Invalid credentials!", "danger")
 
     return render_template("login.html")
@@ -126,6 +124,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
+    flash("Logged out successfully.", "info")
     return redirect(url_for("home"))
 
 # -------------------- PREDICT --------------------
@@ -133,20 +132,20 @@ def logout():
 def predict():
 
     if "user_id" not in session:
-        flash("Login first!", "warning")
+        flash("Please login first!", "warning")
         return redirect(url_for("login"))
 
     prediction = None
     today_price = None
     stock_input = None
     graph_html = None
-    news_list = None
+    news_list = []
 
     if request.method == "POST":
-        stock_input = request.form["stock"].upper().strip()
+        stock_input = request.form.get("stock", "").upper().strip()
 
         if not re.match(r'^[A-Z0-9.\-]{1,10}$', stock_input):
-            flash("Invalid ticker.", "danger")
+            flash("Invalid stock symbol.", "danger")
             return redirect(url_for("predict"))
 
         try:
@@ -157,20 +156,20 @@ def predict():
 
                 today_price = round(data["Close"].iloc[-1], 2)
 
-                # ✅ ML PREDICTION
-                close_prices = data["Close"].values.reshape(-1, 1)
-                scaled_data = scaler.fit_transform(close_prices)
+                # -------- ML PREDICTION --------
+                close_data = data["Close"].values.reshape(-1, 1)
+                scaled_data = scaler.fit_transform(close_data)
 
-                last_60_days = scaled_data[-60:]
-                X_test = np.array([last_60_days])
+                last_60 = scaled_data[-60:]
+                X_test = np.array([last_60])
                 X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
 
-                predicted_price = model.predict(X_test)
-                predicted_price = scaler.inverse_transform(predicted_price)
+                pred = model.predict(X_test)
+                pred = scaler.inverse_transform(pred)
 
-                prediction = round(predicted_price[0][0], 2)
+                prediction = round(pred[0][0], 2)
 
-                # ✅ GRAPH
+                # -------- GRAPH --------
                 fig = go.Figure()
 
                 fig.add_trace(go.Scatter(
@@ -189,17 +188,16 @@ def predict():
 
                 fig.update_layout(
                     template="plotly_dark",
-                    title=f"{stock_input} Prediction"
+                    title=f"{stock_input} Stock Prediction"
                 )
 
                 graph_html = pio.to_html(fig, full_html=False)
 
-                # ✅ NEWS
+                # -------- NEWS --------
                 news_feed = feedparser.parse(
                     f"https://news.google.com/rss/search?q={stock_input}+stock"
                 )
 
-                news_list = []
                 for entry in news_feed.entries[:5]:
                     news_list.append({
                         "title": entry.title,
@@ -210,8 +208,8 @@ def predict():
                 flash("No data found.", "warning")
 
         except Exception as e:
-            print(e)
-            flash("Error fetching data.", "danger")
+            print("Error:", e)
+            flash("Error fetching stock data.", "danger")
 
     return render_template(
         "predict.html",
@@ -224,4 +222,4 @@ def predict():
 
 # -------------------- RUN --------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=5000, debug=True)
