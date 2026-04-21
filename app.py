@@ -12,15 +12,20 @@ from datetime import timedelta
 app = Flask(__name__)
 
 # -------------------- SECURITY CONFIG --------------------
-# FIX 1: Use environment variable for secret key, never hardcode
 app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(24)
-
-# FIX 2: Session expiry — auto-logout after 1 hour of inactivity
 app.permanent_session_lifetime = timedelta(hours=1)
 
 # -------------------- DATABASE CONFIG --------------------
-# FIX 3: Support production DB via environment variable (fallback to SQLite for dev)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///users.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL', 'sqlite:///users.db'
+)
+
+# Fix for PostgreSQL URL issue on Render
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace(
+        "postgres://", "postgresql://", 1
+    )
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -51,14 +56,13 @@ def signup():
     if request.method == "POST":
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
-        password = generate_password_hash(request.form["password"])
+        password_raw = request.form["password"]
 
-        # FIX 4: Basic input validation for signup
-        if not username or not email or not request.form["password"]:
+        if not username or not email or not password_raw:
             flash("All fields are required.", "danger")
             return redirect(url_for("signup"))
 
-        if len(request.form["password"]) < 8:
+        if len(password_raw) < 8:
             flash("Password must be at least 8 characters.", "danger")
             return redirect(url_for("signup"))
 
@@ -70,7 +74,9 @@ def signup():
             flash("Username or Email already exists!", "danger")
             return redirect(url_for("signup"))
 
-        new_user = User(username=username, email=email, password=password)
+        hashed_password = generate_password_hash(password_raw)
+
+        new_user = User(username=username, email=email, password=hashed_password)
         db.session.add(new_user)
         db.session.commit()
 
@@ -80,7 +86,6 @@ def signup():
     return render_template("signup.html")
 
 # -------------------- LOGIN --------------------
-# FIX 5: Track failed login attempts to prevent brute force
 login_attempts = {}
 
 @app.route("/login", methods=["GET", "POST"])
@@ -89,26 +94,22 @@ def login():
         username = request.form["username"].strip()
         password = request.form["password"]
 
-        # Simple brute-force protection (in-memory, resets on server restart)
-        # For production, use flask-limiter with Redis instead
         ip = request.remote_addr
         attempts = login_attempts.get(ip, 0)
+
         if attempts >= 5:
-            flash("Too many failed attempts. Please try again later.", "danger")
+            flash("Too many failed attempts. Try later.", "danger")
             return render_template("login.html")
 
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
-            # Reset failed attempts on success
             login_attempts.pop(ip, None)
-
-            session.permanent = True   # Respect the 1-hour lifetime set above
+            session.permanent = True
             session["user_id"] = user.id
             session["username"] = user.username
             return redirect(url_for("predict"))
         else:
-            # Increment failed attempts
             login_attempts[ip] = attempts + 1
             flash("Invalid username or password!", "danger")
 
@@ -120,7 +121,7 @@ def logout():
     session.clear()
     return redirect(url_for("home"))
 
-# -------------------- PREDICT PAGE --------------------
+# -------------------- PREDICT --------------------
 @app.route("/predict", methods=["GET", "POST"])
 def predict():
 
@@ -134,14 +135,12 @@ def predict():
     logo_url = None
     graph_html = None
     news_list = None
-    error_message = None
 
     if request.method == "POST":
         stock_input = request.form["stock"].upper().strip()
 
-        # FIX 6: Validate ticker symbol before passing to any external service
         if not re.match(r'^[A-Z0-9.\-]{1,10}$', stock_input):
-            flash("Invalid ticker symbol. Use only letters, numbers, dots, or hyphens (max 10 chars).", "danger")
+            flash("Invalid ticker symbol.", "danger")
             return redirect(url_for("predict"))
 
         try:
@@ -150,69 +149,54 @@ def predict():
 
             if not data.empty:
 
-                # ---------------- ACTUAL PRICE ----------------
                 today_price = round(data["Close"].iloc[-1], 2)
 
-                # ---------------- 10-DAY MOVING AVERAGE ----------------
-                # FIX 7: Renamed from "Predicted" to accurately reflect it's a moving average
                 data["MA10"] = data["Close"].rolling(window=10).mean()
                 prediction = round(data["MA10"].iloc[-1], 2)
 
-                # ---------------- COMPANY LOGO ----------------
-                clean_symbol = stock_input.replace(".NS", "").replace(".BSE", "").lower()
+                clean_symbol = stock_input.replace(".NS", "").lower()
                 logo_url = f"https://logo.clearbit.com/{clean_symbol}.com"
 
-                # ---------------- PLOTLY GRAPH ----------------
                 fig = go.Figure()
 
                 fig.add_trace(go.Scatter(
                     x=data.index,
                     y=data["Close"],
                     mode="lines",
-                    name="Actual Price",
-                    line=dict(color="cyan", width=2)
+                    name="Actual Price"
                 ))
 
-                # FIX 7 (continued): Label accurately in graph too
                 fig.add_trace(go.Scatter(
                     x=data.index,
                     y=data["MA10"],
                     mode="lines",
-                    name="10-Day Moving Average",
-                    line=dict(color="orange", dash="dash")
+                    name="10-Day Moving Average"
                 ))
 
                 fig.update_layout(
                     template="plotly_dark",
-                    title=f"{stock_input} - Actual Price vs 10-Day Moving Average",
-                    xaxis_title="Date",
-                    yaxis_title="Price (USD)",
-                    legend_title="Legend"
+                    title=f"{stock_input} Price Analysis"
                 )
 
                 graph_html = pio.to_html(fig, full_html=False)
 
-                # ---------------- NEWS ----------------
                 news_feed = feedparser.parse(
-                    f"https://news.google.com/rss/search?q={stock_input}+stock&hl=en-IN&gl=IN&ceid=IN:en"
+                    f"https://news.google.com/rss/search?q={stock_input}+stock"
                 )
 
                 news_list = []
                 for entry in news_feed.entries[:5]:
                     news_list.append({
                         "title": entry.title,
-                        "link": entry.link,
-                        "published": entry.published
+                        "link": entry.link
                     })
 
             else:
-                # FIX 8: Handle empty data gracefully
-                flash(f"No data found for '{stock_input}'. Please check the ticker symbol.", "warning")
+                flash("No data found.", "warning")
 
         except Exception as e:
-            # FIX 8: Show user-facing error instead of silently swallowing it
-            print(f"[ERROR] Stock fetch failed for {stock_input}: {e}")
-            flash(f"Could not fetch data for '{stock_input}'. Please try again later.", "danger")
+            print(e)
+            flash("Error fetching data.", "danger")
 
     return render_template(
         "predict.html",
@@ -226,6 +210,5 @@ def predict():
 
 # -------------------- RUN APP --------------------
 if __name__ == "__main__":
-    # FIX 9: Debug mode controlled by environment variable, defaults to OFF
     debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
-    app.run(debug=debug_mode)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=debug_mode)
