@@ -1,6 +1,7 @@
 flask
-numpy
-pandas
-scikit-learn
-joblib
+flask_sqlalchemy
+gunicorn
 yfinance
+plotly
+feedparser
+werkzeug
