@@ -5,3 +5,6 @@ yfinance
 plotly
 feedparser
 werkzeug
+tensorflow-cpu
+scikit-learn
+numpy
